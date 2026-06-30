@@ -52,12 +52,10 @@ fi
 echo "==> renaming module: ${OLD_MODULE} → ${NEW_MODULE}"
 echo "==> renaming binary: ${OLD_BINARY} → ${NEW_BINARY}"
 
-SED_INPLACE=(-i)
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    SED_INPLACE=(-i '')
-fi
-
-# tracked files only, skip binary/vendored content
+# tracked files only, skip binary/vendored content.
+# perl behaves identically on macOS (BSD) and Linux (GNU): it supports the \b
+# word boundary that BSD sed lacks. \Q..\E quotes regex metacharacters in the
+# literals, and the s{}{} delimiter keeps module paths containing / intact.
 git ls-files -z | while IFS= read -r -d '' file; do
     case "$file" in
         scripts/setup.sh) continue ;;        # don't mutate this script while running
@@ -67,10 +65,12 @@ git ls-files -z | while IFS= read -r -d '' file; do
     if ! grep -Iq . "$file" 2>/dev/null; then
         continue
     fi
-    sed "${SED_INPLACE[@]}" \
-        -e "s|${OLD_MODULE}|${NEW_MODULE}|g" \
-        -e "s|\\b${OLD_BINARY}\\b|${NEW_BINARY}|g" \
-        "$file"
+    OLD_MODULE="${OLD_MODULE}" NEW_MODULE="${NEW_MODULE}" \
+    OLD_BINARY="${OLD_BINARY}" NEW_BINARY="${NEW_BINARY}" \
+    perl -i -pe '
+        s{\Q$ENV{OLD_MODULE}\E}{$ENV{NEW_MODULE}}g;
+        s{\b\Q$ENV{OLD_BINARY}\E\b}{$ENV{NEW_BINARY}}g;
+    ' "$file"
 done
 
 if [[ -d "cmd/${OLD_BINARY}" && "${OLD_BINARY}" != "${NEW_BINARY}" ]]; then
